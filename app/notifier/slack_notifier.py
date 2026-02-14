@@ -24,8 +24,17 @@ from app.graph.state import WeeklyResearchState, ContentItem
 def _build_digest_md(items: List[ContentItem], week_id: str) -> str:
     """
     Slack投稿用Markdownを生成。
-    MVPでは「タイトル + URL + source + publish日」程度。
-    次ステップで summary / insights / rating / tags を追加する。
+
+    ここでは analyzer ノードで付与した
+    - tags
+    - importance.total
+    を表示する。
+
+    将来ここに：
+    - summary（要約）
+    - insights（示唆）
+    - trend情報（急上昇タグ等）
+    を追加して「読む価値のある週報」に育てる。
     """
     lines = []
     lines.append(f"*Weekly AI Agent Digest*  (`{week_id}`)")
@@ -41,10 +50,20 @@ def _build_digest_md(items: List[ContentItem], week_id: str) -> str:
         source = it.get("source_type", "other")
         pub = it.get("published_at") or "unknown"
 
-        # Slackでは [text](url) がリンクとして扱える
+        # Analyzerが付与する想定だが、失敗時は無いこともあるので安全に扱う
+        tags = it.get("tags") or []
+        importance = it.get("importance") or {}
+        score = importance.get("total")
+
+        # 表示整形
+        tag_str = ", ".join(tags[:6]) if tags else "-"
+        score_str = f"{score:.1f}/25" if isinstance(score, (int, float)) else "-"
+
         lines.append(f"*{i}.* [{title}]({url})")
         lines.append(f"• source: `{source}`  • published: `{pub}`")
+        lines.append(f"• score: *{score_str}*  • tags: `{tag_str}`")
         lines.append("")
+
     return "\n".join(lines)
 
 

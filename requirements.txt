@@ -2,3 +2,5 @@ langgraph
 requests
 chromadb
 sentence-transformers
+openai
+pydantic
