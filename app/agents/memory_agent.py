@@ -99,9 +99,9 @@ def memory_dedup_node(state: WeeklyResearchState) -> WeeklyResearchState:
             return True, dist, nearest_id, "url_match"
 
         # (3) 最後に距離閾値（補助）
-        DUP_DIST_THRESHOLD = 0.25
-        if nearest_id and dist <= DUP_DIST_THRESHOLD:
-            return True, dist, nearest_id, "similarity_threshold"
+        #DUP_DIST_THRESHOLD = 0.25
+        #if nearest_id and dist <= DUP_DIST_THRESHOLD:
+            #return True, dist, nearest_id, "similarity_threshold"
 
         return False, dist, nearest_id, "not_duplicate"
 
