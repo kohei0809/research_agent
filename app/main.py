@@ -1,6 +1,9 @@
 # app/main.py
 from __future__ import annotations
 
+from dotenv import load_dotenv
+load_dotenv()
+
 import uuid
 from datetime import datetime
 from zoneinfo import ZoneInfo

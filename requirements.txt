@@ -1,6 +1,7 @@
 langgraph
 requests
 chromadb
-sentence-transformers
+fastembed
 openai
 pydantic
+python-dotenv

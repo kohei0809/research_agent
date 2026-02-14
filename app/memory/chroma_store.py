@@ -2,15 +2,21 @@
 from __future__ import annotations
 
 """
-ChromaStore（ローカル永続メモリ）
+ChromaStore（ローカル永続メモリ）- fastembed版（torch不要）
 
-目的：
-- 週次で配信した論文/記事をベクトルDBに保存し、次回以降の重複配信を防ぐ
-- 将来的には「過去のトピック傾向」「関連コンテンツの参照」にも使う
+なぜ fastembed？
+- sentence-transformers は torch 依存で、環境によって torch が入らず詰まりがち
+- fastembed は ONNX 系で軽量・インストールが通りやすい（無料）
+- 自己研鑽で「まず動かす」には最適
 
-採用理由：
-- Chromaはローカル永続が簡単で無料、自己研鑽に最適
-- Cloud Runへ移行する場合も、永続ストレージを工夫すれば継続利用可能
+このStoreの責務：
+- 文字列をベクトル化（embed）
+- Chromaへ保存（upsert）
+- 類似検索（query）
+- 保存済みID一覧取得（get_all_ids）
+
+将来：
+- Cloud Run へ載せる場合は永続ストレージを工夫する（Volume / GCS等）
 """
 
 import os
@@ -18,71 +24,71 @@ from typing import List, Dict
 
 import chromadb
 from chromadb.config import Settings
-from sentence_transformers import SentenceTransformer
+
+# torch不要の埋め込み
+from fastembed import TextEmbedding
 
 
 class ChromaStore:
     """
-    - PersistentClientでディスク永続化
-    - 埋め込みは sentence-transformers をローカル利用（無料）
+    ローカル永続の Chroma + fastembed による埋め込み。
     """
 
     def __init__(
         self,
         persist_dir: str = "data/chroma_db",
         collection_name: str = "weekly_items",
-        model_name: str = "sentence-transformers/all-MiniLM-L6-v2",
+        # fastembedがサポートするモデル名を指定（軽量で無難なもの）
+        # 例: "BAAI/bge-small-en-v1.5" など
+        embed_model: str = "BAAI/bge-small-en-v1.5",
     ) -> None:
-        # Chromaの永続ディレクトリを作成
         os.makedirs(persist_dir, exist_ok=True)
 
-        # 埋め込みモデル（ローカル）
-        # ※初回はモデルDLが走るので少し時間がかかる
-        self._embedder = SentenceTransformer(model_name)
+        # fastembed の埋め込み器（初回はモデルDLが走ることがあります）
+        self._embedder = TextEmbedding(model_name=embed_model)
 
-        # anonymized_telemetry=False にしておくと、匿名テレメトリ送信を抑制できる
+        # Chroma 永続クライアント
         self._client = chromadb.PersistentClient(
             path=persist_dir,
             settings=Settings(anonymized_telemetry=False),
         )
 
-        # 既存があればそれを使う。なければ作る。
+        # コレクション（なければ作成）
         self._col = self._client.get_or_create_collection(name=collection_name)
 
     def embed(self, texts: List[str]) -> List[List[float]]:
         """
-        テキストをベクトル化する。
-        normalize_embeddings=True で正規化しておくと、類似比較が安定しやすい。
+        テキストをベクトル化して list[list[float]] を返す。
+        fastembed の embed は generator を返すので list 化する。
         """
-        vecs = self._embedder.encode(
-            texts, show_progress_bar=False, normalize_embeddings=True
-        )
-        return vecs.tolist()
+        vectors = list(self._embedder.embed(texts))
+        # vectors は numpy array 相当が入るので tolist() で Python list 化
+        return [v.tolist() for v in vectors]
 
     def upsert_items(self, ids: List[str], texts: List[str], metadatas: List[Dict]) -> None:
         """
-        ベクトルDBに保存する（upsertなので既存なら更新）。
+        ベクトルDBに保存（upsert）。
         - ids: item_id
-        - texts: 埋め込み対象文（title等）
-        - metadatas: urlやpublished_atなど、後で参照したい属性
+        - texts: 埋め込み対象テキスト（title等）
+        - metadatas: url や published_at など、後で参照したい属性
         """
         embeddings = self.embed(texts)
         self._col.upsert(ids=ids, embeddings=embeddings, documents=texts, metadatas=metadatas)
 
     def query_similar(self, text: str, n_results: int = 5) -> Dict:
         """
-        類似検索（近いアイテムを探す）。
-        - ここで返る "distances" の意味はコレクション設定に依存することがあるため、
-          MVPでは「一番近い候補が存在するか」を重視して運用し、閾値は後で調整する。
+        類似検索。
+        - 戻り値は Chroma の query 結果 dict
+        - distances の意味は距離指標に依存するが、一般に「小さいほど近い」
         """
         emb = self.embed([text])[0]
         return self._col.query(query_embeddings=[emb], n_results=n_results)
 
     def get_all_ids(self, limit: int = 100000) -> List[str]:
         """
-        既存保存済みIDの一覧を取得。
-        MVPではシンプルに全件取得しているが、
-        将来的に件数が増えたら週単位で絞る等の工夫が必要。
+        保存済みID一覧を取得。
+        MVPでは全件取得でOK。
+        件数が増えたら週で絞るなど最適化余地あり。
         """
         res = self._col.get(limit=limit, include=["metadatas"])
         return list(res.get("ids", []))

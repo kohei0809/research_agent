@@ -40,7 +40,7 @@ class OpenAIAnalyzer:
     """
 
     def __init__(self, model: Optional[str] = None) -> None:
-        self.client = OpenAI()
+        self.client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
         self.model = model or _DEFAULT_MODEL
 
     def analyze_item(self, title: str, venue: str, url: str, published_at: str) -> ItemAnalysis:
