@@ -1,6 +1,10 @@
 # app/agents/memory_agent.py
 from __future__ import annotations
 
+from app.utils.logger import get_logger, log_with_run_id
+
+logger = get_logger(__name__)
+
 """
 Memory / Dedup Node
 
@@ -135,5 +139,12 @@ def memory_dedup_node(state: WeeklyResearchState) -> WeeklyResearchState:
             "payload": state["memory_write_results"],
             "timestamp": now,
         }
+    )
+    
+    log_with_run_id(
+        logger,
+        "info",
+        run_id,
+        f"Dedup complete: stored={len(ids)}, skipped={len(candidates) - len(deduped)}"
     )
     return state

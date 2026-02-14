@@ -8,6 +8,8 @@ from zoneinfo import ZoneInfo
 from app.graph.builder import run_graph
 from app.graph.state import WeeklyResearchState
 
+from app.utils.logger import setup_logging, get_logger
+
 
 def _current_week_id_jst() -> str:
     # 週番号生成（ISO week）
@@ -18,6 +20,10 @@ def _current_week_id_jst() -> str:
 
 
 def main() -> None:
+    # ログ設定
+    setup_logging()
+    logger = get_logger(__name__)
+    
     run_id = str(uuid.uuid4())
     week_id = _current_week_id_jst()
 
@@ -39,6 +45,8 @@ def main() -> None:
     print("slack_post_result:", final_state.get("slack_post_result"))
     if final_state.get("errors"):
         print("errors:", final_state["errors"])
+        
+    logger.info(f"Run finished: run_id={final_state.get('run_id')}")
 
 
 if __name__ == "__main__":

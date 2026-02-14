@@ -1,6 +1,10 @@
 # app/agents/collector.py
 from __future__ import annotations
 
+from app.utils.logger import get_logger, log_with_run_id
+
+logger = get_logger(__name__)
+
 """
 Collector Node（収集ノード）
 
@@ -23,6 +27,9 @@ def collector_node(state: WeeklyResearchState) -> WeeklyResearchState:
     """
     LangGraphノード関数（Stateを受け取り、Stateを返す）。
     """
+    run_id = state.get("run_id")
+    log_with_run_id(logger, "info", run_id, "Collector started")
+    
     now = datetime.now(timezone.utc).isoformat()
 
     # NOTE: 実運用ではここでMCPを呼び出し、収集対象（論文/記事）を増やす。
@@ -67,4 +74,6 @@ def collector_node(state: WeeklyResearchState) -> WeeklyResearchState:
             "timestamp": now,
         }
     )
+    
+    log_with_run_id(logger, "info", run_id, f"Collected {len(dummy)} items")
     return state
