@@ -1,2 +1,4 @@
 langgraph
 requests
+chromadb
+sentence-transformers
