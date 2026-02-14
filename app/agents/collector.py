@@ -1,6 +1,18 @@
 # app/agents/collector.py
 from __future__ import annotations
 
+"""
+Collector Node（収集ノード）
+
+役割：
+- MCP（arXiv / web / search / file）から最新・話題の論文/記事を収集し、
+  State.collected_items に追加する。
+
+現状：
+- まずパイプラインを動かすことを優先し、ダミーデータを返している。
+- 次ステップでMCP連携に差し替える。
+"""
+
 from datetime import datetime, timezone
 from typing import List
 
@@ -9,11 +21,15 @@ from app.graph.state import WeeklyResearchState, ContentItem
 
 def collector_node(state: WeeklyResearchState) -> WeeklyResearchState:
     """
-    TODO: MCP4種（arxiv/web/search/file）を使って収集する。
-    いまは動作確認用にダミーデータを入れる。
+    LangGraphノード関数（Stateを受け取り、Stateを返す）。
     """
     now = datetime.now(timezone.utc).isoformat()
 
+    # NOTE: 実運用ではここでMCPを呼び出し、収集対象（論文/記事）を増やす。
+    # - arXiv: "agent", "tool use", "workflow", "langgraph" などで検索
+    # - web/blog/news: RSSや検索結果から収集
+    # - search: 横断検索（話題の拾い漏れ対策）
+    # - file: 収集ログや設定ファイルの読み書き等（将来）
     dummy: List[ContentItem] = [
         {
             "item_id": "arxiv:dummy-0001",
@@ -35,10 +51,12 @@ def collector_node(state: WeeklyResearchState) -> WeeklyResearchState:
         },
     ]
 
+    # collected_items は「未フィルタの収集結果」置き場。
+    # 後段の filter ノードがここから必要なものだけ抽出する。
     state.setdefault("collected_items", [])
     state["collected_items"].extend(dummy)
 
-    # A2A向けの決定ログ（任意）
+    # A2A向けに「何をしたか」を残すと、後から分析しやすい（任意）
     state.setdefault("decisions", [])
     state["decisions"].append(
         {
