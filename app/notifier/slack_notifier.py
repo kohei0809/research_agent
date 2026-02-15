@@ -21,25 +21,59 @@ import requests
 from app.graph.state import WeeklyResearchState, ContentItem
 
 
-def _build_digest_md(items: List[ContentItem], week_id: str) -> str:
+def _build_digest_md(items: List[ContentItem], week_id: str, trend_stats: dict | None = None) -> str:
     """
-    Slack投稿用Markdownを生成。
+    Slack投稿用Markdownを生成（週報完成形に近づけた版）。
 
-    ここでは analyzer ノードで付与した
-    - tags
-    - importance.total
-    を表示する。
+    表示構成：
+    1) Trend（Rising / Top Tags）
+    2) Items（タイトル/URL/スコア/タグ）
+       - summary（短い概要）
+       - insights（示唆：最大3）
 
-    将来ここに：
-    - summary（要約）
-    - insights（示唆）
-    - trend情報（急上昇タグ等）
-    を追加して「読む価値のある週報」に育てる。
+    NOTE:
+    - Slackは長いと読まれないので、summaryは短く、insightsも少数に制限する
+    - analyzerが失敗したアイテムは summary/insights が無いことがあるので安全に扱う
     """
     lines = []
     lines.append(f"*Weekly AI Agent Digest*  (`{week_id}`)")
     lines.append("")
 
+    # ---------------------------
+    # Trend summary (optional)
+    # ---------------------------
+    if trend_stats:
+        rising = trend_stats.get("rising") or []
+        top_tags = trend_stats.get("top_tags") or []
+
+        lines.append("*🔥 Rising Tags (vs previous saved week)*")
+        if not rising:
+            lines.append("• _No significant changes detected._")
+        else:
+            for r in rising[:6]:
+                tag = r.get("tag", "-")
+                delta = r.get("delta", 0)
+                sign = "+" if isinstance(delta, int) and delta > 0 else ""
+                lines.append(f"• `{tag}` ({sign}{delta})")
+        lines.append("")
+
+        lines.append("*📊 Top Tags This Week*")
+        if not top_tags:
+            lines.append("• _No tags found._")
+        else:
+            for t in top_tags[:8]:
+                tag = t.get("tag", "-")
+                count = t.get("count", 0)
+                delta = t.get("delta", 0)
+                sign = "+" if isinstance(delta, int) and delta > 0 else ""
+                lines.append(f"• `{tag}`: {count} ({sign}{delta})")
+        lines.append("")
+        lines.append("---")
+        lines.append("")
+
+    # ---------------------------
+    # Items list
+    # ---------------------------
     if not items:
         lines.append("_No relevant items found this run._")
         return "\n".join(lines)
@@ -50,22 +84,40 @@ def _build_digest_md(items: List[ContentItem], week_id: str) -> str:
         source = it.get("source_type", "other")
         pub = it.get("published_at") or "unknown"
 
-        # Analyzerが付与する想定だが、失敗時は無いこともあるので安全に扱う
         tags = it.get("tags") or []
         importance = it.get("importance") or {}
         score = importance.get("total")
 
-        # 表示整形
+        summary = (it.get("summary") or "").strip()
+        insights = it.get("insights") or []
+
         tag_str = ", ".join(tags[:6]) if tags else "-"
         score_str = f"{score:.1f}/25" if isinstance(score, (int, float)) else "-"
 
         lines.append(f"*{i}.* [{title}]({url})")
         lines.append(f"• source: `{source}`  • published: `{pub}`")
         lines.append(f"• score: *{score_str}*  • tags: `{tag_str}`")
-        lines.append("")
+
+        # summary（短めを想定。念のため長すぎたら切る）
+        if summary:
+            if len(summary) > 220:
+                summary = summary[:220] + "…"
+            lines.append(f"• summary: {summary}")
+
+        # insights（最大3）
+        if insights:
+            lines.append("• insights:")
+            for ins in insights[:3]:
+                ins = str(ins).strip()
+                if not ins:
+                    continue
+                if len(ins) > 140:
+                    ins = ins[:140] + "…"
+                lines.append(f"  - {ins}")
+
+        lines.append("")  # 1アイテムごとに空行
 
     return "\n".join(lines)
-
 
 def slack_notify_node(state: WeeklyResearchState) -> WeeklyResearchState:
     """
@@ -81,10 +133,18 @@ def slack_notify_node(state: WeeklyResearchState) -> WeeklyResearchState:
 
     week_id = state.get("week_id", "unknown-week")
 
-    # 通知対象は、重複排除済みの deduped_items を優先する
-    items = state.get("deduped_items", state.get("filtered_items", []))
+    # 通知対象は analyzer の結果（enriched_items）を最優先。
+    # analyzerが失敗した場合にも動くように deduped_items / filtered_items にフォールバックする。
+    items = (
+        state.get("enriched_items")
+        or state.get("deduped_items")
+        or state.get("filtered_items")
+        or []
+    )
 
-    digest_md = _build_digest_md(items, week_id)
+    # slack_notify_node の中で、digest_md を作る行を置き換え
+    trend_stats = state.get("trend_stats")
+    digest_md = _build_digest_md(items, week_id, trend_stats=trend_stats)
     state["digest_markdown"] = digest_md
 
     # Webhookが未設定なら送信しない（ローカル検証用）

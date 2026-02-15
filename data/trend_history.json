@@ -1,0 +1,37 @@
+{
+  "2026-W07": {
+    "saved_at": "2026-02-14T23:59:15.783899+00:00",
+    "tag_counts": {
+      "self-efficacy": 1,
+      "experimentation": 1,
+      "agentic-systems": 1,
+      "tool-use": 1,
+      "system-design": 1,
+      "performance": 1,
+      "insights": 1,
+      "reliability": 1,
+      "engineering": 1,
+      "ai-agents": 1,
+      "development": 1,
+      "best-practices": 1
+    },
+    "keyword_counts": {
+      "道具使用": 1,
+      "システム設計": 1,
+      "フィードバック": 2,
+      "自己効力感": 1,
+      "適応能力": 1,
+      "エージェント": 2,
+      "パフォーマンス": 1,
+      "実験結果": 1,
+      "アプローチ": 1,
+      "技術": 1,
+      "評価基準": 1,
+      "AI": 1,
+      "信頼性": 1,
+      "実用性": 1
+    },
+    "items": 2,
+    "prev_week_id": "2026-W07"
+  }
+}

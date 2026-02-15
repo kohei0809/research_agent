@@ -2,18 +2,15 @@
 from __future__ import annotations
 
 """
-OpenAI Structured Outputs 用のスキーマ（Pydantic）を定義する。
+OpenAI Structured Outputs 用のスキーマ（Pydantic）。
 
 目的：
-- LLM出力を「必ずこの形」で受け取る（壊れにくい）
-- JSONパース失敗やキー欠落に強い
-- 後続ノード（Slack通知など）で扱いやすい
+- LLM出力を「必ずこの形」で受け取り、後段処理を壊れにくくする
+- 週次週報に必要な情報（要約・要点・示唆・重要度・タグ）を一括で生成する
 
-このプロジェクトでは、1アイテム（論文/記事）に対して
-- keywords（キーワード）
-- tags（正規化タグ）
-- importance（重要度評価）
-を付与するために使う。
+設計方針：
+- 週報で読める長さに強制する（長文化するとSlackで読みにくい & コスト増）
+- タグはトレンド分析のキーになるので「再利用しやすい正規化」前提
 """
 
 from pydantic import BaseModel, Field, conint, confloat
@@ -22,20 +19,9 @@ from typing import List
 
 class ImportanceRating(BaseModel):
     """
-    重要度スコア
-
-    5軸（各1〜5）で評価し、合計を total（0〜25）として持つ。
-    - novelty:      技術的新規性
-    - practicality: 実用可能性（プロダクト/運用に乗るか）
-    - reproducibility: 再現性（追試・実装しやすさ）
-    - impact:       将来性/インパクト（中長期の重要性）
-    - buzz:         話題性（コミュニティの注目度）
-
-    NOTE:
-    - total は「5軸の和」になるようにモデルに指示している。
-      もし不整合が出る場合は、後段で合計を再計算して上書きする運用も可能。
+    重要度スコア（5軸×1〜5、合計0〜25）
+    - total は5軸の合計になるようにモデルに指示（不整合が出たら後段で補正も可能）
     """
-
     novelty: conint(ge=1, le=5) = Field(..., description="技術的新規性")
     practicality: conint(ge=1, le=5) = Field(..., description="実用可能性")
     reproducibility: conint(ge=1, le=5) = Field(..., description="再現性")
@@ -49,15 +35,17 @@ class ItemAnalysis(BaseModel):
     """
     1つの論文/記事に付与する分析結果。
 
-    keywords:
-      - 技術用語中心の短い単語列
-      - 重複なしを推奨
-
-    tags:
-      - 正規化されたカテゴリ（後でトレンド分析のキーになる）
-      - snake-case or kebab-case を推奨
-      - 最大6程度
+    - summary: 週報でサッと読める短い概要（日本語推奨）
+    - key_points: 重要点（最大5）
+    - insights: 実装/運用/設計に効く示唆（最大3）
+    - keywords: 技術キーワード（最大8、英語/短句推奨）
+    - tags: 正規化カテゴリ（最大6、kebab-case推奨）
     """
-    keywords: List[str] = Field(..., description="キーワード（最大8個程度）")
-    tags: List[str] = Field(..., description="正規化タグ（最大6個程度）")
+    summary: str = Field(..., description="概要（短め、日本語で3〜5文程度）")
+    key_points: List[str] = Field(..., description="要点（最大5、短文）")
+    insights: List[str] = Field(..., description="示唆（最大3、実装/運用/設計に繋がる）")
+
+    keywords: List[str] = Field(..., description="キーワード（最大8、重複なし）")
+    tags: List[str] = Field(..., description="正規化タグ（最大6、kebab-case推奨）")
+
     importance: ImportanceRating

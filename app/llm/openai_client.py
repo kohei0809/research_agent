@@ -4,17 +4,14 @@ from __future__ import annotations
 """
 OpenAI API クライアント（Responses API + Structured Outputs）。
 
-ここでは「解析（keywords/tags/importance）」専用の薄いラッパーを提供する。
-
-設計意図：
-- ノード側（analyzer.py）にAPIの細部が漏れないようにする
-- モデル切替やプロンプト改善をこのファイルに閉じ込める
-- Structured Outputs で壊れにくい出力を得る（Pydanticスキーマ）
+今回の拡張：
+- keywords/tags/importance に加えて summary/key_points/insights を生成する。
+- 週次週報向けに「短く」「実務に繋がる」出力を強制する。
 
 環境変数：
-- OPENAI_API_KEY  : OpenAI SDKが自動で読む
-- OPENAI_MODEL    : 利用モデル（例 gpt-4o-mini）
-- OPENAI_TIMEOUT  : タイムアウト秒
+- OPENAI_API_KEY  : 必須（.envなら load_dotenv() が必要）
+- OPENAI_MODEL    : 例 "gpt-4o-mini"
+- OPENAI_TIMEOUT  : タイムアウト秒（デフォルト30）
 """
 
 import os
@@ -24,58 +21,47 @@ from openai import OpenAI
 from app.llm.openai_models import ItemAnalysis
 
 
-# デフォルト値（環境変数で上書き可能）
 _DEFAULT_MODEL = os.environ.get("OPENAI_MODEL", "gpt-4o-mini")
 _DEFAULT_TIMEOUT = float(os.environ.get("OPENAI_TIMEOUT", "30"))
 
 
 class OpenAIAnalyzer:
     """
-    Analyzer用途のOpenAIクライアント。
-
-    NOTE:
-    - OpenAI() は OPENAI_API_KEY を環境変数から取得する
-    - ここでは item 1件ずつ解析する（MVP）
-    - 将来はバッチ化やコスト最適化を行う可能性あり
+    解析用途のOpenAIラッパー。
+    - ノード側は "analyze_item()" を呼ぶだけでよい状態にしておく
+    - プロンプト改善・モデル差し替えはここに閉じ込める
     """
 
     def __init__(self, model: Optional[str] = None) -> None:
-        self.client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
+        # NOTE: OPENAI_API_KEY は SDK が環境変数から読む
+        self.client = OpenAI()
         self.model = model or _DEFAULT_MODEL
 
     def analyze_item(self, title: str, venue: str, url: str, published_at: str) -> ItemAnalysis:
         """
-        1アイテム分のキーワード/タグ/重要度を構造化で生成する。
+        1アイテムの週報向け分析を生成する。
 
-        入力：
-        - title: 記事/論文タイトル
-        - venue: 媒体（arXivカテゴリ、ブログ名など）
-        - url:   URL
-        - published_at: 公開日（不明なら "unknown" でもOK）
-
-        出力：
-        - ItemAnalysis（Pydantic）：
-          keywords/tags/importance を必ず含む
-
-        精度改善ポイント：
-        - ここに abstract や本文抜粋（extracted_text）を追加すると精度が上がる
-        - ただしコストも増えるので、MVPではタイトル中心で運用開始が現実的
+        入力はMVPではタイトル中心だが、将来は以下を追加すると精度が上がる：
+        - abstract（論文）
+        - 本文抜粋（記事）
+        - 既存の類似コンテンツ情報（memoryから）
         """
 
-        # system: 役割・制約を明確にし、出力の揺れを減らす
+        # system: 役割 + 制約を明確にし、出力を短く安定化させる
         system = (
             "You are an expert AI/Software Research Analyst.\n"
-            "Given an item (paper/article), extract:\n"
-            "- keywords (concise, tech terms)\n"
-            "- tags (normalized, reusable categories)\n"
-            "- importance rating (1-5 per dimension) with a short rationale\n"
-            "Constraints:\n"
-            "- keywords: up to 8, no duplicates\n"
-            "- tags: up to 6, snake-case or kebab-case preferred, reusable\n"
-            "- importance.total must be the sum of the 5 dimensions\n"
+            "Your job: produce a concise weekly-digest analysis for a paper/article.\n\n"
+            "Output rules (VERY IMPORTANT):\n"
+            "- summary: Japanese, 3-5 short sentences. No hype.\n"
+            "- key_points: up to 5 bullets, each <= 20 Japanese words.\n"
+            "- insights: up to 3 bullets, each should suggest an actionable implication for engineers.\n"
+            "- keywords: up to 8 short technical terms, no duplicates.\n"
+            "- tags: up to 6 normalized categories in kebab-case (reusable across weeks).\n"
+            "- importance: rate 1-5 for each dimension; total must equal the sum.\n"
+            "- Do not invent citations or claim to have read the full text; infer only from provided fields.\n"
         )
 
-        # user: 解析対象の事実データを渡す
+        # user: 解析対象の事実情報（現状は最低限）
         user = (
             f"ITEM\n"
             f"Title: {title}\n"
@@ -85,8 +71,8 @@ class OpenAIAnalyzer:
         )
 
         # Structured Outputs:
-        # - text_format に Pydanticモデルを渡すと output_parsed を返してくれる
-        # - JSON崩れや想定外出力を大幅に減らせる
+        # - text_format に Pydanticモデルを渡すと、output_parsed に検証済み結果が入る
+        # - 週次運用で壊れにくい
         resp = self.client.responses.parse(
             model=self.model,
             input=[
@@ -94,11 +80,9 @@ class OpenAIAnalyzer:
                 {"role": "user", "content": user},
             ],
             text_format=ItemAnalysis,
-            # 週次バッチの安定性を優先して温度低め
+            # 週報は安定性優先なので低め
             temperature=0.2,
-            # ネットワーク・APIの不安定さ対策（必要に応じて調整）
             timeout=_DEFAULT_TIMEOUT,
         )
 
-        # Pydanticオブジェクトがここに入る（型安全）
         return resp.output_parsed
