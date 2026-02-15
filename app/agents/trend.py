@@ -40,6 +40,18 @@ TOP_N_TAGS = 8
 TOP_N_KEYWORDS = 8
 TOP_N_RISING = 6
 
+# トレンドに出したくない「一般語」「メタタグ」
+STOP_TAGS = {
+    "insights",
+    "best-practices",
+    "engineering",
+    "development",
+    "experimentation",
+    "self-efficacy",
+    "efficiency",
+    # ↑ ここは運用で増やしてOK（プロジェクト固有のノイズが必ず出る）
+}
+
 
 def _safe_list(v) -> List[str]:
     """
@@ -88,6 +100,13 @@ def _week_sort_key(week_id: str) -> Tuple[int, int]:
         return int(y), int(w)
     except Exception:
         return (0, 0)
+    
+    
+def _normalize_tag(tag: str) -> str:
+    tag = tag.strip().lower()
+    tag = tag.replace("_", "-")
+    tag = tag.replace(" ", "-")
+    return tag
 
 
 def _compute_counts(enriched_items: List[ContentItem]) -> Tuple[Counter, Counter]:
@@ -100,7 +119,10 @@ def _compute_counts(enriched_items: List[ContentItem]) -> Tuple[Counter, Counter
     kw_counter: Counter = Counter()
 
     for it in enriched_items:
-        tags = _safe_list(it.get("tags"))
+        tags = [_normalize_tag(t) for t in _safe_list(it.get("tags"))]
+        tags = [t for t in tags if t and t not in STOP_TAGS]
+        tag_counter.update(set(tags))
+
         kws = _safe_list(it.get("keywords"))
 
         # 1アイテム内で同じタグ/キーワードが重複する可能性があるため set() で潰す

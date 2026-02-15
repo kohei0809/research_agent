@@ -70,10 +70,36 @@ def _build_digest_md(items: List[ContentItem], week_id: str, trend_stats: dict |
         lines.append("")
         lines.append("---")
         lines.append("")
+        
+    # スコアでMust Readを抽出（閾値は運用で調整）
+    MUST_READ_THRESHOLD = 19.0
+    must_read = []
+    others = []
+
+    for it in items:
+        score = (it.get("importance") or {}).get("total")
+        if isinstance(score, (int, float)) and score >= MUST_READ_THRESHOLD:
+            must_read.append(it)
+        else:
+            others.append(it)
+
+    # Must Read があれば先頭に短く載せる
+    if must_read:
+        lines.append("*⭐ Must Read This Week*")
+        for it in must_read[:5]:
+            title = it.get("title", "(no title)")
+            url = it.get("url", "")
+            score = (it.get("importance") or {}).get("total")
+            lines.append(f"• [{title}]({url})  (score: *{score:.1f}/25*)")
+        lines.append("")
+        lines.append("---")
+        lines.append("")
+
 
     # ---------------------------
     # Items list
     # ---------------------------
+    items = must_read + others
     if not items:
         lines.append("_No relevant items found this run._")
         return "\n".join(lines)
