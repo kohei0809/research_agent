@@ -17,7 +17,8 @@ LangGraph のグラフ定義（Trend追加版）。
 from langgraph.graph import StateGraph, END
 
 from app.graph.state import WeeklyResearchState, ensure_state_defaults
-from app.agents.collector import collector_node
+#from app.agents.collector import collector_node
+from app.agents.collector_mcp import collector_node
 from app.agents.filter import filter_node
 from app.agents.memory_agent import memory_dedup_node
 from app.agents.analyzer import analyzer_node

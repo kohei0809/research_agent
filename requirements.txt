@@ -5,3 +5,5 @@ fastembed
 openai
 pydantic
 python-dotenv
+langchain_mcp_adapters
+dotenv

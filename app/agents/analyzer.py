@@ -29,8 +29,15 @@ from typing import List
 from app.graph.state import WeeklyResearchState, ContentItem
 from app.llm.openai_client import OpenAIAnalyzer
 from app.utils.logger import get_logger, log_with_run_id
+from app.config.tag_taxonomy import TAG_SYNONYMS, STOP_TAGS
+
 
 logger = get_logger(__name__)
+
+
+def _normalize_tag(tag: str) -> str:
+    tag = tag.strip().lower().replace("_", "-").replace(" ", "-").strip("-")
+    return TAG_SYNONYMS.get(tag, tag)
 
 
 def analyzer_node(state: WeeklyResearchState) -> WeeklyResearchState:
@@ -56,15 +63,20 @@ def analyzer_node(state: WeeklyResearchState) -> WeeklyResearchState:
 
         try:
             analysis = llm.analyze_item(title=title, venue=venue, url=url, published_at=pub)
+            
+            norm_tags = []
+            for t in analysis.tags:
+                t = _normalize_tag(t)
+                if t and t not in STOP_TAGS:
+                    norm_tags.append(t)
 
-            # ---- 週報向けの情報（今回追加）----
+            # 重複除去（順序を保つ）
+            seen = set()
+            it["tags"] = [x for x in norm_tags if not (x in seen or seen.add(x))]
             it["summary"] = analysis.summary
             it["key_points"] = analysis.key_points
             it["insights"] = analysis.insights
-
-            # ---- 既存（すでにあった）----
             it["keywords"] = analysis.keywords
-            it["tags"] = analysis.tags
             it["importance"] = analysis.importance.model_dump()
 
             enriched.append(it)

@@ -1,0 +1,18 @@
+{
+  "arxiv_queries": [
+    "cat:cs.AI OR cat:cs.CL OR cat:cs.RO AND (agent OR agentic OR tool OR autonomous)",
+    "model context protocol OR MCP AND (agent OR tool)"
+  ],
+  "rss_feeds": [
+    "https://example.com/feed.xml"
+  ],
+  "blog_urls": [
+    "https://example.com/blog"
+  ],
+  "twitter_topics": [
+    "langgraph",
+    "model context protocol",
+    "agentic systems",
+    "ai agent"
+  ]
+}

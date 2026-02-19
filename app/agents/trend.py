@@ -26,6 +26,7 @@ from typing import Dict, List, Tuple
 
 from app.graph.state import WeeklyResearchState, TrendStats, ContentItem
 from app.utils.logger import get_logger, log_with_run_id
+from app.config.tag_taxonomy import TAG_SYNONYMS, STOP_TAGS
 
 logger = get_logger(__name__)
 
@@ -36,21 +37,9 @@ HISTORY_PATH = "data/trend_history.json"
 MAX_WEEKS_TO_KEEP = 24
 
 # 表示上位数
-TOP_N_TAGS = 8
-TOP_N_KEYWORDS = 8
-TOP_N_RISING = 6
-
-# トレンドに出したくない「一般語」「メタタグ」
-STOP_TAGS = {
-    "insights",
-    "best-practices",
-    "engineering",
-    "development",
-    "experimentation",
-    "self-efficacy",
-    "efficiency",
-    # ↑ ここは運用で増やしてOK（プロジェクト固有のノイズが必ず出る）
-}
+TOP_N_TAGS = 5
+TOP_N_KEYWORDS = 5
+TOP_N_RISING = 5
 
 
 def _safe_list(v) -> List[str]:
@@ -103,9 +92,16 @@ def _week_sort_key(week_id: str) -> Tuple[int, int]:
     
     
 def _normalize_tag(tag: str) -> str:
+    """
+    1) 文字正規化
+    2) 同義語を代表タグへ寄せる（taxonomy）
+    """
     tag = tag.strip().lower()
-    tag = tag.replace("_", "-")
-    tag = tag.replace(" ", "-")
+    tag = tag.replace("_", "-").replace(" ", "-")
+    tag = tag.strip("-")
+
+    # 同義語 → 代表タグ
+    tag = TAG_SYNONYMS.get(tag, tag)
     return tag
 
 
