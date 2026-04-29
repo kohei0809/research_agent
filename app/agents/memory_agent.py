@@ -18,6 +18,8 @@ Memory / Dedup Node（検証しやすい版）
 
 from datetime import datetime, timezone
 from typing import List, Tuple, Dict, Any
+import hashlib
+import json
 
 from app.graph.state import WeeklyResearchState, ContentItem
 from app.memory.chroma_store import ChromaStore
@@ -34,6 +36,30 @@ def _item_text_for_embedding(item: ContentItem) -> str:
     title = item.get("title", "")
     venue = item.get("venue", "")
     return f"{title}\n{venue}".strip()
+
+
+def _ensure_item_id(it: dict) -> str:
+    # まず既にあればそれを使う
+    v = it.get("item_id")
+    if isinstance(v, str) and v.strip():
+        return v.strip()
+
+    # arXiv系: id を最優先（例: "2602.16708v1"）
+    for k in ("id", "paper_id", "arxiv_id"):
+        v = it.get(k)
+        if isinstance(v, str) and v.strip():
+            # source_type があれば prefix も付けて衝突回避
+            st = (it.get("source_type") or it.get("source") or "item")
+            return f"{st}:{v.strip()}"
+
+    # URL があるなら URL ベース
+    v = it.get("url") or it.get("link")
+    if isinstance(v, str) and v.strip():
+        return v.strip()
+
+    # 最後の手段：内容ハッシュ（安定）
+    raw = json.dumps(it, sort_keys=True, ensure_ascii=False)
+    return hashlib.sha1(raw.encode("utf-8")).hexdigest()
 
 
 def memory_dedup_node(state: WeeklyResearchState) -> WeeklyResearchState:
@@ -59,6 +85,12 @@ def memory_dedup_node(state: WeeklyResearchState) -> WeeklyResearchState:
 
     candidates = state.get("filtered_items", [])
     deduped: List[ContentItem] = []
+    
+    for it in candidates:
+        it["item_id"] = _ensure_item_id(it)
+        # url のキー揺れも吸収（RSS等で link の場合）
+        if not it.get("url") and it.get("link"):
+            it["url"] = it["link"]
 
     log_with_run_id(logger, "info", run_id, f"Memory/Dedup started: candidates={len(candidates)} seen_ids={len(seen_ids)}")
 
@@ -132,7 +164,12 @@ def memory_dedup_node(state: WeeklyResearchState) -> WeeklyResearchState:
     metas: List[dict] = []
 
     for it in deduped:
-        ids.append(it["item_id"])
+        item_id = it.get("item_id")
+        if not item_id:
+            item_id = _ensure_item_id(it)
+            it["item_id"] = item_id
+        ids.append(item_id)
+
         texts.append(_item_text_for_embedding(it))
         metas.append(
             {
